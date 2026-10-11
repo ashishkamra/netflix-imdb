@@ -1,12 +1,18 @@
 # ShowScore
 
-A minimal movie and TV-show lookup: type a name, see matching titles and their IMDb ratings.
+A minimal movie and TV-show lookup: type a name, see matching titles and their IMDb ratings, with a clearly labeled TMDb fallback.
 
 ## Data setup
 
 Get an API key from https://www.omdbapi.com/apikey.aspx and configure `OMDB_API_KEY` as a **server-side environment variable**. Do not prefix it with `VITE_`, put it in source code, or commit it. The app shows an honest unavailable state until a key is configured. Visitors do not need accounts or keys.
 
-TMDB provides title discovery for movies and TV series, with exact matches prioritized and newer exact-name matches first. IMDb external IDs link candidates to OMDb, which provides the IMDb ratings. Titles are not removed when an IMDb ID or OMDb rating is missing; they show a pending/unavailable state and link to TMDB when no IMDb link exists. The app never substitutes TMDB's own rating for an IMDb score. When TMDB is not configured locally, unfiltered search falls back to OMDb for both movies and series. Searches are debounced, detail requests have bounded concurrency, and a bounded in-memory cache reduces requests. The free OMDb allowance is currently advertised as 1,000 requests per day. Check the providers' current terms, data-use rights, and attribution requirements before public launch.
+TMDB provides title discovery for movies and TV series, with exact matches prioritized and newer exact-name matches first. IMDb external IDs link candidates to OMDb, which provides the IMDb ratings. Titles are not removed when an IMDb ID or OMDb rating is missing. When TMDB is not configured locally, unfiltered search falls back to OMDb for both movies and series. Searches are debounced, detail requests have bounded concurrency, and a bounded in-memory cache reduces requests. The free OMDb allowance is currently advertised as 1,000 requests per day. Check the providers' current terms, data-use rights, and attribution requirements before public launch.
+
+## Fast rating fallback
+
+IMDb scores via OMDb always take precedence. TMDb's separate user rating, clearly labeled **TMDb**, is shown while IMDb loads and retained if OMDb has no score or the lookup fails. TMDb scores and vote counts come from the existing search response, with no extra rating requests. Zero-vote, missing, or invalid TMDb scores are treated as unavailable, not as zero. IMDb and TMDb scores are never blended or mislabeled.
+
+Tapping a title expands lightweight rating details inside ShowScore; it does not navigate or make another API request. The expanded area includes the displayed rating's source and vote count, an explanation of any fallback, and an optional **Open IMDb** link. Titles without an IMDb ID have an optional **Open TMDb** link instead. If neither source supplies a rating, the row shows **Unavailable**.
 
 ## Development
 
@@ -26,4 +32,4 @@ Configure `TMDB_API_KEY` as a server-side environment variable (Production and P
 
 Search results are checked one candidate page at a time. “More matches” remains available even when a page has no confirmed Netflix matches; the displayed Netflix count is the number found so far, not an invented global count. Data credits include the required TMDB logo, disclaimer, and JustWatch attribution.
 
-This app is not affiliated with Netflix or IMDb. Missing scores are shown as “Not rated”, never as zero.
+This app is not affiliated with Netflix or IMDb. Missing scores are shown as “Unavailable”, never as zero.

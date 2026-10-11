@@ -1,11 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Search, Star, X, LoaderCircle, AlertCircle, ArrowRight } from 'lucide-react';
-import type { ApiResult, Rating, SearchData, Show } from '@/lib/shows';
-import { imdbIdFor, titleHref } from '@/lib/shows';
+import { ArrowUpRight, ChevronDown, Search, Star, X, LoaderCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import type { ApiResult, Rating, SearchData, ScoredShow } from '@/lib/shows';
+import { imdbIdFor, ratingFor, titleHref } from '@/lib/shows';
 
 export const Route = createFileRoute('/')({ component: Home });
-type ScoredShow = Show & { rating?: Rating; failed?: boolean };
 
 async function lookup<T>(params: Record<string, string>, signal: AbortSignal): Promise<T> {
   const response = await fetch(`/api/lookup?${new URLSearchParams(params)}`, { signal });
@@ -24,12 +23,13 @@ function Home() {
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [active, setActive] = useState(-1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [netflixOnly, setNetflixOnly] = useState(false);
   const [nextPage, setNextPage] = useState<number | null>(null);
   const [unknownByPage, setUnknownByPage] = useState<Record<number, number>>({});
   const [unknownTitlesByPage, setUnknownTitlesByPage] = useState<Record<number, string[]>>({});
   const input = useRef<HTMLInputElement>(null);
-  const anchors = useRef<(HTMLAnchorElement | null)[]>([]);
+  const resultButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const clean = query.trim();
   const unknown = Object.values(unknownByPage).reduce((sum, count) => sum + count, 0);
   const unknownTitles = [...new Set(Object.values(unknownTitlesByPage).flat())];
@@ -38,7 +38,7 @@ function Home() {
     const controller = new AbortController();
     setError('');
     setActive(-1);
-    if (page === 1) { setShows([]); setSearched(false); setNextPage(null); setUnknownByPage({}); setUnknownTitlesByPage({}); }
+    if (page === 1) { setShows([]); setSearched(false); setNextPage(null); setUnknownByPage({}); setUnknownTitlesByPage({}); setExpandedId(null); }
     if (clean.length < 2) { setLoading(false); return () => controller.abort(); }
     setLoading(true);
     const timer = setTimeout(async () => {
@@ -82,7 +82,7 @@ function Home() {
       <main>
         <section className="lookup-section" aria-labelledby="headline">
           <p className="eyebrow">THE QUICK RATING CHECK</p>
-          <h1 id="headline">A title.<br /><span>An IMDb rating.</span></h1>
+          <h1 id="headline">A title.<br /><span>A quick rating.</span></h1>
           <p className="intro">Know the score before you press play.</p>
           <div className="search-area">
             <label className="sr-only" htmlFor="show-search">Search for a movie or TV show</label>
@@ -95,7 +95,7 @@ function Home() {
                   if (shows.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
                     event.preventDefault();
                     const next = event.key === 'ArrowDown' ? Math.min(active + 1, shows.length - 1) : Math.max(active - 1, 0);
-                    setActive(next); anchors.current[next]?.focus();
+                    setActive(next); resultButtons.current[next]?.focus();
                   }
                 }} />
               {query ? <button className="clear-button" aria-label="Clear search" onClick={() => { change(''); input.current?.focus(); }}><X size={19} /></button> : <kbd aria-hidden="true">Type to search</kbd>}
@@ -109,30 +109,44 @@ function Home() {
           <div className="results-region" aria-busy={loading}>
             <p className="sr-only" role="status">{error ? error : loading ? netflixOnly ? 'Checking Netflix availability and loading ratings.' : 'Searching and loading ratings.' : searched ? `${shows.length} matching titles.` : ''}</p>
             {error && <div className="message error-message"><AlertCircle size={22} aria-hidden="true" /><div><h2>Couldn’t get the score</h2><p>{error}</p><button className="text-button" onClick={() => setRetry(value => value + 1)}>Try again <ArrowRight size={14} /></button></div></div>}
-            {loading && !shows.length && !error && <div className="message"><LoaderCircle className="spinner" size={20} aria-hidden="true" /><p>{netflixOnly ? 'Checking Netflix around the world…' : 'Finding your show…'}</p></div>}
+            {loading && !shows.length && !error && <div className="message"><LoaderCircle className="spinner" size={20} aria-hidden="true" /><p>{netflixOnly ? 'Checking Netflix around the world…' : 'Finding your title…'}</p></div>}
             {searched && !loading && !shows.length && !error && <div className="message"><Search size={22} aria-hidden="true" /><div><h2>{netflixOnly ? 'No confirmed Netflix matches yet' : 'No matching titles'}</h2><p>{netflixOnly ? nextPage ? 'There are more titles to check. Try more matches below.' : 'Try another name, or turn off Netflix only to see all titles.' : 'Try another name or check the spelling.'}</p></div></div>}
             {!!shows.length && <>
-              <div className="results-heading"><span>{shows.length} {netflixOnly ? 'Netflix ' : ''}{shows.length === 1 ? 'match' : 'matches'}{nextPage !== null ? ' so far' : ''}</span><span>IMDb rating</span></div>
-              <ul className="results-list" aria-label="Matching TV shows">
-                {shows.map((show, index) => <li key={show.id}>
-                  <a ref={node => { anchors.current[index] = node; }} href={titleHref(show)} target="_blank" rel="noopener noreferrer" className={active === index ? 'result-link active' : 'result-link'}
-                    aria-label={`${show.title}, ${show.year}, ${show.mediaType === 'movie' ? 'movie' : 'TV series'}, ${show.rating?.score ? `IMDb ${show.rating.score} out of 10` : !imdbIdFor(show) ? 'IMDb link pending' : show.failed || show.rating?.unavailable ? 'rating unavailable' : show.rating ? 'no score yet' : 'rating loading'}. Open ${imdbIdFor(show) ? 'IMDb' : 'TMDB'} in a new tab.`}
-                    onFocus={() => setActive(index)} onBlur={() => setActive(-1)}
-                    onKeyDown={event => {
-                      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        const next = event.key === 'ArrowDown' ? Math.min(index + 1, shows.length - 1) : index - 1;
-                        if (next < 0) input.current?.focus(); else anchors.current[next]?.focus();
-                      }
-                      if (event.key === 'Escape') input.current?.focus();
-                    }}>
-                    <span className="show-info"><span className="show-title">{show.title}</span><span className="show-meta">{show.year} <span>·</span> {show.mediaType === 'movie' ? 'Movie' : 'TV series'}{show.netflixCountries && <> <span>·</span> Netflix in {show.netflixCountries.length} {show.netflixCountries.length === 1 ? 'country' : 'countries'}</>}</span></span>
-                    <span className="rating-info">{show.rating?.score ? <><Star size={15} fill="currentColor" aria-hidden="true" /><strong>{show.rating.score}</strong><span className="out-of">/10</span></> : !imdbIdFor(show) ? <span className="rating-status">IMDb link pending</span> : show.failed || show.rating?.unavailable ? <span className="rating-status">Unavailable</span> : show.rating ? <span className="rating-status">No score yet</span> : <LoaderCircle size={18} className="spinner" aria-label="Loading rating" />}<ArrowUpRight size={16} className="result-arrow" aria-hidden="true" /></span>
-                  </a>
-                </li>)}
+              <div className="results-heading"><span>{shows.length} {netflixOnly ? 'Netflix ' : ''}{shows.length === 1 ? 'match' : 'matches'}{nextPage !== null ? ' so far' : ''}</span><span>Rating /10</span></div>
+              <ul className="results-list" aria-label="Matching movies and TV shows">
+                {shows.map((show, index) => {
+                  const rating = ratingFor(show);
+                  const imdbPending = !!imdbIdFor(show) && !show.rating && !show.failed;
+                  const expanded = expandedId === show.id;
+                  const detailsId = `rating-details-${show.id}`;
+                  const imdbStatus = imdbPending ? 'Checking IMDb via OMDb…' : show.failed ? 'IMDb score couldn’t load from OMDb.' : imdbIdFor(show) ? 'IMDb score unavailable from OMDb.' : 'No IMDb link available from the catalog.';
+                  return <li key={show.id}>
+                    <button type="button" ref={node => { resultButtons.current[index] = node; }} className={active === index ? 'result-link active' : 'result-link'}
+                      aria-expanded={expanded} aria-controls={detailsId}
+                      aria-label={`${show.title}, ${show.year}, ${show.mediaType === 'movie' ? 'movie' : 'TV series'}, ${rating ? `${rating.source} ${rating.score} out of 10` : imdbPending ? 'rating loading' : 'rating unavailable'}. ${expanded ? 'Hide' : 'Show'} rating details.`}
+                      onClick={() => setExpandedId(expanded ? null : show.id)}
+                      onFocus={() => setActive(index)} onBlur={() => setActive(-1)}
+                      onKeyDown={event => {
+                        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          const next = event.key === 'ArrowDown' ? Math.min(index + 1, shows.length - 1) : index - 1;
+                          if (next < 0) input.current?.focus(); else resultButtons.current[next]?.focus();
+                        }
+                        if (event.key === 'Escape') { setExpandedId(null); input.current?.focus(); }
+                      }}>
+                      <span className="show-info"><span className="show-title">{show.title}</span><span className="show-meta">{show.year} <span>·</span> {show.mediaType === 'movie' ? 'Movie' : 'TV series'}{show.netflixCountries && <> <span>·</span> Netflix in {show.netflixCountries.length} {show.netflixCountries.length === 1 ? 'country' : 'countries'}</>}</span></span>
+                      <span className="rating-info"><span className="rating-value">{rating ? <><span className="rating-source">{rating.source}</span><span className="rating-number"><Star size={15} fill="currentColor" aria-hidden="true" /><strong>{rating.score}</strong><span className="out-of">/10</span></span></> : imdbPending ? <LoaderCircle size={18} className="spinner" aria-label="Loading IMDb rating" /> : <span className="rating-status">Unavailable</span>}</span><ChevronDown size={16} className={expanded ? 'result-chevron expanded' : 'result-chevron'} aria-hidden="true" /></span>
+                    </button>
+                    <div id={detailsId} className="rating-details" hidden={!expanded}>
+                      <p>{rating?.source === 'IMDb' ? 'IMDb user rating via OMDb.' : <>{imdbStatus} {rating?.source === 'TMDb' ? 'Showing a separate TMDb user rating—not an IMDb score.' : !imdbPending ? 'No TMDb rating available either.' : ''}</>}</p>
+                      {rating?.votes && <p>{rating.votes} {rating.votes === '1' ? 'vote' : 'votes'} on {rating.source}.</p>}
+                      <a className="source-link" href={titleHref(show)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${show.title} on ${imdbIdFor(show) ? 'IMDb' : 'TMDb'} in a new tab`}>Open {imdbIdFor(show) ? 'IMDb' : 'TMDb'} <ArrowUpRight size={14} aria-hidden="true" /></a>
+                    </div>
+                  </li>;
+                })}
               </ul>
-              {shows.some(show => show.failed) && <p className="partial-note">Some scores couldn’t load. You can still check them on IMDb.</p>}
-              {shows.some(show => !imdbIdFor(show) || show.rating?.unavailable) && <p className="partial-note">New titles can appear before their IMDb links or scores reach our providers. Open a title to check its source.</p>}
+              <p className="partial-note">IMDb first. TMDb fallback, clearly labeled. Tap a title for rating details.</p>
+              {shows.some(show => show.failed) && <p className="partial-note">Some IMDb scores couldn’t load. TMDb ratings are shown where available.</p>}
             </>}
             {netflixOnly && unknown > 0 && <div className="partial-note">Availability couldn’t be verified for {unknown} {unknown === 1 ? 'title' : 'titles'}{unknownTitles.length ? `, including ${unknownTitles.slice(0, 3).join(', ')}` : ''}. Unverified titles are excluded. New releases may not have streaming data yet.<br /><button className="text-button" onClick={() => { setNetflixOnly(false); setPage(1); }}>Show all matches <ArrowRight size={14} /></button></div>}
             {!error && searched && nextPage !== null && <button className="more-button" disabled={loading} onClick={() => setPage(nextPage)}>{loading ? netflixOnly ? 'Checking availability…' : 'Loading ratings…' : 'More matches'}<ArrowRight size={16} /></button>}
@@ -140,7 +154,7 @@ function Home() {
           </div>
         </section>
       </main>
-      <footer><span>Just the score. Nothing more.</span><div className="footer-info"><span>Ratings via OMDb <span className="footer-dot">·</span> Not affiliated with Netflix or IMDb.</span><details className="data-credits"><summary>Data credits</summary><div className="credits-content"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="/tmdb-logo.svg" alt="TMDB" width="56" height="40" /></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>Streaming availability provided by <a href="https://www.justwatch.com" target="_blank" rel="noopener noreferrer">JustWatch</a> via TMDB.</p></div></details></div></footer>
+      <footer><span>Just the score. Nothing more.</span><div className="footer-info"><span>IMDb via OMDb <span className="footer-dot">·</span> TMDb fallback <span className="footer-dot">·</span> Not affiliated with Netflix or IMDb.</span><details className="data-credits"><summary>Data credits</summary><div className="credits-content"><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer"><img src="/tmdb-logo.svg" alt="TMDB" width="56" height="40" /></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>Streaming availability provided by <a href="https://www.justwatch.com" target="_blank" rel="noopener noreferrer">JustWatch</a> via TMDB.</p></div></details></div></footer>
     </div>
   );
 }

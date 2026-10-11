@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createTmdbClient, netflixCountries } from '../src/lib/tmdb.server.ts';
 import { filterNetflixPage } from '../src/lib/netflix.server.ts';
 import { LookupError } from '../src/lib/lookup-error.ts';
+import { ratingFor } from '../src/lib/shows.ts';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const netflix = { provider_id: 8, provider_name: 'Netflix' };
@@ -136,8 +137,8 @@ test('fresh TMDB discovery includes movies and TV, excludes people, and keeps mi
       assert.equal(url.searchParams.get('query'), 'Latest Title');
       assert.equal(url.searchParams.get('include_adult'), 'false');
       return json({ total_results: 3, total_pages: 2, results: [
-        { id: 1, media_type: 'tv', name: 'Latest Title', first_air_date: '2020-01-01' },
-        { id: 2, media_type: 'movie', title: 'Latest Title', release_date: '2026-10-09' },
+        { id: 1, media_type: 'tv', name: 'Latest Title', first_air_date: '2020-01-01', vote_average: 8.123, vote_count: 1000 },
+        { id: 2, media_type: 'movie', title: 'Latest Title', release_date: '2026-10-09', vote_average: 7.78, vote_count: 123 },
         { id: 3, media_type: 'person', name: 'Latest Title' },
       ] });
     }
@@ -151,6 +152,8 @@ test('fresh TMDB discovery includes movies and TV, excludes people, and keeps mi
   assert.equal(data.shows[0].imdbId, null);
   assert.equal(data.shows[0].id, 'tmdb-movie-2');
   assert.equal(data.shows[1].imdbId, 'tt1234567');
+  assert.deepEqual(data.shows[0].tmdbRating, { score: '7.8', votes: '123' });
+  assert.deepEqual(data.shows[1].tmdbRating, { score: '8.1', votes: '1,000' });
   assert.equal(data.nextPage, 2);
 });
 
@@ -176,4 +179,39 @@ test('filter preserves TMDB pagination and identifies titles with unverified ava
   const result = await filterNetflixPage({ shows: [dark], total: 25, nextPage: 2 }, 1, async () => ({ verified: false, countries: [] }));
   assert.equal(result.nextPage, 2);
   assert.deepEqual(result.unknownTitles, ['Dark']);
+});
+
+test('TMDb fallback uses search payloads without additional rating requests', async () => {
+  const calls: string[] = [];
+  const client = createTmdbClient({ key: () => 'test', fetcher: async raw => {
+    const path = new URL(String(raw)).pathname;
+    calls.push(path);
+    if (path === '/3/search/multi') return json({ total_results: 1, total_pages: 1, results: [{ id: 2, media_type: 'movie', title: 'Latest', vote_average: 7.8, vote_count: 123 }] });
+    if (path === '/3/movie/2/external_ids') return json({ imdb_id: null });
+    if (path === '/3/movie/2/watch/providers') return json({ results: { JP: { flatrate: [netflix] } } });
+    throw Error(`Unexpected request: ${path}`);
+  } });
+  const data = await client.search('Latest');
+  assert.deepEqual(calls, ['/3/search/multi', '/3/movie/2/external_ids']);
+  const filtered = await filterNetflixPage(data, 1, client.availability);
+  assert.deepEqual(ratingFor(filtered.shows[0]), { source: 'TMDb', score: '7.8', votes: '123' });
+});
+
+test('zero, missing, and malformed TMDb ratings remain unavailable', async () => {
+  const invalid = [
+    {}, { vote_average: 0, vote_count: 0 }, { vote_average: 7.8, vote_count: 0 },
+    { vote_average: -1, vote_count: 1 }, { vote_average: 11, vote_count: 1 },
+    { vote_average: '7.8', vote_count: 1 }, { vote_average: 7.8, vote_count: '10' },
+    { vote_average: 7.8, vote_count: -1 }, { vote_average: 7.8, vote_count: 1.5 },
+  ];
+  const client = createTmdbClient({ key: () => 'test', fetcher: async raw => {
+    if (String(raw).includes('/search/multi')) return json({ results: invalid.map((data, i) => ({ id: i + 1, media_type: 'movie', title: 'Unrated', ...data })) });
+    return json({ imdb_id: null });
+  } });
+  const data = await client.search('Unrated');
+  assert.equal(data.shows.length, invalid.length);
+  for (const show of data.shows) {
+    assert.deepEqual(show.tmdbRating, { score: null, votes: null });
+    assert.equal(ratingFor(show), null);
+  }
 });

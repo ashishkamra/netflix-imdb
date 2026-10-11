@@ -1,10 +1,20 @@
 import { LookupError } from './lookup-error.ts';
-import type { NetflixAvailability, SearchData, Show } from './shows.ts';
+import type { NetflixAvailability, Rating, SearchData, Show } from './shows.ts';
 
 const TTL = 60 * 60 * 1000;
 type JsonObject = Record<string, unknown>;
 function object(value: unknown): value is JsonObject {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function searchRating(entry: JsonObject): Rating {
+  const score = entry.vote_average;
+  const votes = entry.vote_count;
+  // TMDb uses zero when there are no votes. Missing/malformed data is not a rating.
+  if (typeof score !== 'number' || !Number.isFinite(score) || score <= 0 || score > 10 || !Number.isSafeInteger(votes) || Number(votes) <= 0) {
+    return { score: null, votes: null };
+  }
+  return { score: score.toFixed(1), votes: Number(votes).toLocaleString('en-US') };
 }
 
 // Subscription listings only; do not count rentals or purchases as Netflix availability.
@@ -97,7 +107,7 @@ export function createTmdbClient(options: { key: () => string | undefined; fetch
         } catch {
           // A fresh title or missing ID must not disappear just because its IMDb link is unavailable.
         }
-        return { id: imdbId ?? `tmdb-${type}-${tmdbId}`, imdbId, tmdbId, title: typeof title === 'string' ? title : 'Untitled', year: typeof date === 'string' ? date.slice(0, 4) : '', mediaType: movie ? 'movie' : 'series' };
+        return { id: imdbId ?? `tmdb-${type}-${tmdbId}`, imdbId, tmdbId, title: typeof title === 'string' ? title : 'Untitled', year: typeof date === 'string' ? date.slice(0, 4) : '', mediaType: movie ? 'movie' : 'series', tmdbRating: searchRating(entry) };
       }));
       const normalize = (text: string) => text.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
       const needle = normalize(trimmed);

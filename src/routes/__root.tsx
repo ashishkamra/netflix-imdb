@@ -8,8 +8,8 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'ShowScore — a title, an IMDb rating' },
-      { name: 'description', content: 'Find the IMDb rating of movies and TV shows. Just type a name.' },
+      { title: 'ShowScore — a title, a quick rating' },
+      { name: 'description', content: 'Find IMDb ratings for movies and TV shows, with a clearly labeled TMDb fallback. Just type a name.' },
       { name: 'theme-color', content: '#f8f7f4' },
     ],
     links: [

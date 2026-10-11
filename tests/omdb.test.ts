@@ -21,7 +21,7 @@ test('returns multiple matching series and caches and coalesces requests', async
   let calls = 0;
   const client = createOmdbClient({ key: () => 'test', fetcher: async url => {
     calls++;
-    assert.equal(new URL(String(url)).searchParams.get('type'), 'series');
+    assert.equal(new URL(String(url)).searchParams.has('type'), false);
     return response({ Response: 'True', totalResults: '2', Search: [
       { Title: 'Dark', Year: '2017–2020', imdbID: 'tt5753856' },
       { Title: 'Dark Matter', Year: '2024–', imdbID: 'tt19231492' },
@@ -91,4 +91,17 @@ test('visitor throttling resets after its window', () => {
   assert.throws(() => client.throttle('visitor'), /too fast/);
   clock = 60_001;
   assert.doesNotThrow(() => client.throttle('visitor'));
+});
+
+test('fallback search includes movies as well as series', async () => {
+  const client = createOmdbClient({ key: () => 'test', fetcher: async () => response({ Response: 'True', totalResults: '2', Search: [
+    { Title: 'New Netflix Movie', Year: '2026', imdbID: 'tt1234567', Type: 'movie' },
+    { Title: 'New Netflix Series', Year: '2026', imdbID: 'tt7654321', Type: 'series' },
+  ] }) });
+  assert.deepEqual((await client.search('Netflix')).shows.map(show => show.mediaType), ['movie', 'series']);
+});
+
+test('a recent title absent from OMDb reports an unavailable score, not a fabricated rating', async () => {
+  const client = createOmdbClient({ key: () => 'test', fetcher: async () => response({ Response: 'False', Error: 'Movie not found!' }) });
+  assert.deepEqual(await client.rating('tt1234567'), { score: null, votes: null, unavailable: true });
 });

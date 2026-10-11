@@ -128,3 +128,52 @@ test('partial failures exclude unverified shows and report them, complete outage
 test('bad configuration is never disguised as zero Netflix matches', async () => {
   await assert.rejects(filterNetflixPage({ shows: [dark], total: 1 }, 1, async () => { throw new LookupError('tmdb_not_configured', 'Check TMDB_API_KEY'); }), /TMDB_API_KEY/);
 });
+
+test('fresh TMDB discovery includes movies and TV, excludes people, and keeps missing IMDb links', async () => {
+  const client = createTmdbClient({ key: () => 'test', fetcher: async raw => {
+    const url = new URL(String(raw));
+    if (url.pathname === '/3/search/multi') {
+      assert.equal(url.searchParams.get('query'), 'Latest Title');
+      assert.equal(url.searchParams.get('include_adult'), 'false');
+      return json({ total_results: 3, total_pages: 2, results: [
+        { id: 1, media_type: 'tv', name: 'Latest Title', first_air_date: '2020-01-01' },
+        { id: 2, media_type: 'movie', title: 'Latest Title', release_date: '2026-10-09' },
+        { id: 3, media_type: 'person', name: 'Latest Title' },
+      ] });
+    }
+    if (url.pathname === '/3/movie/2/external_ids') return json({ imdb_id: null });
+    return json({ imdb_id: 'tt1234567' });
+  } });
+  const data = await client.search('Latest Title');
+  assert.equal(data.shows.length, 2);
+  assert.equal(data.shows[0].mediaType, 'movie');
+  assert.equal(data.shows[0].year, '2026');
+  assert.equal(data.shows[0].imdbId, null);
+  assert.equal(data.shows[0].id, 'tmdb-movie-2');
+  assert.equal(data.shows[1].imdbId, 'tt1234567');
+  assert.equal(data.nextPage, 2);
+});
+
+test('movie availability uses its TMDB ID directly even before its IMDb ID exists', async () => {
+  const client = createTmdbClient({ key: () => 'test', fetcher: async raw => {
+    assert.equal(new URL(String(raw)).pathname, '/3/movie/2/watch/providers');
+    return json({ results: { IN: { flatrate: [netflix] } } });
+  } });
+  assert.deepEqual(await client.availability('tmdb-movie-2', { id: 'tmdb-movie-2', title: 'Latest', year: '2026', mediaType: 'movie', imdbId: null, tmdbId: 2 }), { verified: true, countries: ['IN'], tmdbId: 2 });
+});
+
+test('fresh discovery keeps titles when external-ID lookup fails and validates pagination', async () => {
+  const client = createTmdbClient({ key: () => 'test', fetcher: async raw => {
+    if (String(raw).includes('/search/multi')) return json({ total_results: 1, total_pages: 1, results: [{ id: 2, media_type: 'movie', title: 'Latest', release_date: '2026-10-09' }] });
+    throw Error('External-ID service unavailable');
+  } });
+  assert.equal((await client.search('Latest')).shows[0].imdbId, null);
+  await assert.rejects(client.search('x'), /between 2 and 100/);
+  await assert.rejects(client.search('Latest', 501), /between 2 and 100/);
+});
+
+test('filter preserves TMDB pagination and identifies titles with unverified availability', async () => {
+  const result = await filterNetflixPage({ shows: [dark], total: 25, nextPage: 2 }, 1, async () => ({ verified: false, countries: [] }));
+  assert.equal(result.nextPage, 2);
+  assert.deepEqual(result.unknownTitles, ['Dark']);
+});

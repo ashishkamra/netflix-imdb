@@ -53,7 +53,7 @@ export function createOmdbClient(options: { key: () => string | undefined; fetch
         const value = data as Record<string, unknown>;
         if (value.Response !== 'True') {
           const message = typeof value.Error === 'string' ? value.Error : '';
-          if (/not found/i.test(message)) return { Response: 'True', Search: [], totalResults: '0' };
+          if (/not found/i.test(message)) return { Response: 'True', Search: [], totalResults: '0', unavailable: true };
           if (/limit/i.test(message)) throw new LookupError('quota', 'The rating service’s daily limit has been reached. Please try again tomorrow.');
           if (/key/i.test(message)) throw new LookupError('not_configured', 'Live ratings aren’t connected. The site owner needs to check the OMDb API key.');
           throw new LookupError('upstream', 'The rating service couldn’t complete that search. Try a more specific show name.');
@@ -83,11 +83,11 @@ export function createOmdbClient(options: { key: () => string | undefined; fetch
       if (trimmed.length < 2 || trimmed.length > 100 || !Number.isInteger(page) || page < 1 || page > 100) {
         throw new LookupError('invalid', 'Enter a show name between 2 and 100 characters.');
       }
-      const data = await request({ s: trimmed, type: 'series', page: String(page) }, 300_000);
+      const data = await request({ s: trimmed, page: String(page) }, 300_000);
       const matches = Array.isArray(data.Search) ? data.Search : [];
       const shows = matches.slice(0, 10).flatMap((item: Record<string, unknown>) =>
         item && typeof item.Title === 'string' && typeof item.imdbID === 'string' && /^tt\d{7,10}$/.test(item.imdbID)
-          ? [{ id: item.imdbID, title: item.Title, year: typeof item.Year === 'string' ? item.Year : '' }] : []);
+          ? [{ id: item.imdbID, title: item.Title, year: typeof item.Year === 'string' ? item.Year : '', mediaType: item.Type === 'movie' ? 'movie' as const : 'series' as const }] : []);
       return { shows, total: Number(data.totalResults) || 0 };
     },
     async rating(id: string): Promise<Rating> {
@@ -96,6 +96,7 @@ export function createOmdbClient(options: { key: () => string | undefined; fetch
       return {
         score: typeof data.imdbRating === 'string' && /^\d(?:\.\d)?$|^10(?:\.0)?$/.test(data.imdbRating) ? data.imdbRating : null,
         votes: typeof data.imdbVotes === 'string' && /^[\d,]+$/.test(data.imdbVotes) ? data.imdbVotes : null,
+        ...(data.unavailable ? { unavailable: true } : {}),
       };
     },
   };
@@ -114,7 +115,9 @@ export async function handleLookup(request: Request) {
     const page = Number(url.searchParams.get('page') ?? '1');
     const data = id
       ? await omdb.rating(id)
-      : await omdb.search(url.searchParams.get('q') ?? '', page);
+      : process.env.TMDB_API_KEY?.trim()
+        ? await tmdb.search(url.searchParams.get('q') ?? '', page)
+        : await omdb.search(url.searchParams.get('q') ?? '', page);
     const filtered = netflixOnly
       ? await filterNetflixPage(data as SearchData, page, tmdb.availability)
       : data;

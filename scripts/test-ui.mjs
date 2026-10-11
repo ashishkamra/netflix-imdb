@@ -20,6 +20,7 @@ const fixture = `(() => {
         ? { shows: [{ id: 'tt1234567', title: 'Dark — unrated test title', year: '2026' }], total: 3, nextPage: null }
         : { shows: [{ id: 'tt5753856', title: 'Dark', year: '2017–2020' }, { id: 'tt19231492', title: 'Dark Matter', year: '2024–' }], total: 3, nextPage: 2 };
     } else if (query === 'Crown') data = { shows: [{ id: 'tt4786824', title: 'The Crown', year: '2016–2023' }], total: 1 };
+    else if (query === 'Latest') data = { shows: [{ id: 'tmdb-movie-2', title: 'Latest Movie', year: '2026', mediaType: 'movie', imdbId: null, tmdbId: 2 }, { id: 'tt1234567', title: 'Latest Series', year: '2026', mediaType: 'series' }], total: 2 };
     else if (query === 'Nothing') data = { shows: [], total: 0 };
     else if (query === 'Failure') return Response.json({ ok: false, code: 'quota', message: 'Daily lookup limit reached. Please try again tomorrow.' });
     else if (url.searchParams.has('id')) {
@@ -60,9 +61,9 @@ const commands = [
   ['screenshot', `${screenshots}/results-mobile.png`],
   assert("if (document.documentElement.scrollWidth > innerWidth) throw Error('Mobile overflow')"),
   ['click', '.more-button'], ['wait', '800'],
-  assert("if (document.querySelectorAll('.results-list li').length !== 3 || !document.body.innerText.includes('Not rated')) throw Error('Pagination or missing rating failed')"),
+  assert("if (document.querySelectorAll('.results-list li').length !== 3 || !document.body.innerText.includes('No score yet')) throw Error('Pagination or missing rating failed')"),
   ['fill', '#show-search', 'Nothing'], ['wait', '700'],
-  assert("if (!document.body.innerText.includes('No matching shows')) throw Error('Empty state missing')"),
+  assert("if (!document.body.innerText.includes('No matching titles')) throw Error('Empty state missing')"),
   ['fill', '#show-search', 'Failure'], ['wait', '700'],
   assert("if (!document.body.innerText.includes('Daily lookup limit reached')) throw Error('Quota error missing')"),
   ['click', '.text-button'], ['wait', '700'],
@@ -88,6 +89,8 @@ const commands = [
   assert("if (!document.body.innerText.includes('TMDB_API_KEY')) throw Error('Netflix configuration error hidden')"),
   ['click', '.netflix-toggle'], ['fill', '#show-search', 'Dark'], ['wait', '700'],
   assert("if (document.querySelectorAll('.results-list li').length !== 2) throw Error('Turning off Netflix filter failed')"),
+  ['fill', '#show-search', 'Latest'], ['wait', '700'],
+  assert("if (!document.body.innerText.includes('Latest Movie') || !document.body.innerText.includes('IMDb link pending') || !document.querySelector('.results-list a').href.includes('themoviedb.org/movie/2')) throw Error('Latest movie without an IMDb link disappeared')"),
   ['focus', '.data-credits summary'], ['press', 'Enter'], ['wait', '200'],
   assert("if (!document.querySelector('.data-credits').open || !document.querySelector('.credits-content img').naturalWidth) throw Error('Data credits or logo missing')"),
   ['errors'], ['close'],

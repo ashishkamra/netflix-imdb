@@ -1,10 +1,10 @@
 import { LookupError } from './lookup-error.ts';
 import type { NetflixAvailability, SearchData, Show } from './shows.ts';
 
-export async function filterNetflixPage(data: SearchData, page: number, availability: (id: string) => Promise<NetflixAvailability>): Promise<SearchData> {
+export async function filterNetflixPage(data: SearchData, page: number, availability: (id: string, show?: Show) => Promise<NetflixAvailability>): Promise<SearchData> {
   const results = await Promise.all(data.shows.map(async (show): Promise<{ show: Show; result: NetflixAvailability; error?: unknown }> => {
     try {
-      const result = await availability(show.id);
+      const result = await availability(show.id, show);
       return { show, result };
     } catch (error) {
       // Bad configuration must be visible, never disguised as zero matches.
@@ -21,7 +21,8 @@ export async function filterNetflixPage(data: SearchData, page: number, availabi
     shows,
     // This is the number of title candidates, not a fabricated global Netflix count.
     total: data.total,
-    nextPage: page < 100 && page * 10 < data.total ? page + 1 : null,
+    nextPage: data.nextPage !== undefined ? data.nextPage : page < 100 && page * 10 < data.total ? page + 1 : null,
     unknown: results.filter(({ result }) => !result.verified).length,
+    unknownTitles: results.filter(({ result }) => !result.verified).map(({ show }) => show.title),
   };
 }

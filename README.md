@@ -2,6 +2,8 @@
 
 A minimal movie and TV-show lookup: type a name, see matching titles and their IMDb ratings, with a clearly labeled TMDb fallback.
 
+**Live site:** [ShowScore on Vercel](https://netflix-imdb-chi.vercel.app/)
+
 ## Data setup
 
 Get an API key from https://www.omdbapi.com/apikey.aspx and configure `OMDB_API_KEY` as a **server-side environment variable**. Do not prefix it with `VITE_`, put it in source code, or commit it. The app shows an honest unavailable state until a key is configured. Visitors do not need accounts or keys.
@@ -20,7 +22,7 @@ Install dependencies with `npm install`, then use `npm run dev` (or `sh startup.
 
 ## Vercel
 
-Import this directory as the project's root. Use the `npm run build` build command; Nitro generates Vercel Build Output in `.vercel/output`. Configure `OMDB_API_KEY` for the appropriate Preview/Production environments and redeploy. Do not treat this as a static GitHub Pages site: the lookup endpoint needs a server.
+Import this directory as the project's root. Use the `npm run build` build command; Nitro generates Vercel Build Output in `.vercel/output`. Configure `OMDB_API_KEY` and `TMDB_API_KEY` as server-side environment variables for the appropriate Preview/Production environments and redeploy. Do not treat this as a static GitHub Pages site: the lookup endpoint needs a server.
 
 The Vercel Hobby plan is intended for personal, non-commercial projects and has usage limits. Cache, coalescing, daily request caps, and throttling in this MVP are per server instance, not global across Vercel instances. For heavier public traffic, add shared quota tracking/caching and platform-level rate limiting before launch. No database or authentication is used.
 

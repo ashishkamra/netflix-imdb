@@ -15,7 +15,7 @@
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
-    "test:lookup": "node --experimental-strip-types --test tests/omdb.test.ts",
+    "test:lookup": "node --experimental-strip-types --test tests/*.test.ts",
     "test:ui": "node scripts/test-ui.mjs",
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "npm run test:lookup",

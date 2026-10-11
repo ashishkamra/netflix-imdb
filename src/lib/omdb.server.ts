@@ -1,9 +1,8 @@
 import type { Rating, SearchData } from './shows.ts';
-
-export class LookupError extends Error {
-  code: string;
-  constructor(code: string, message: string) { super(message); this.code = code; }
-}
+import { LookupError } from './lookup-error.ts';
+import { tmdb } from './tmdb.server.ts';
+import { filterNetflixPage } from './netflix.server.ts';
+export { LookupError } from './lookup-error.ts';
 
 export function createOmdbClient(options: { key: () => string | undefined; fetcher?: typeof fetch; now?: () => number }) {
   const fetcher = options.fetcher ?? fetch;
@@ -110,10 +109,16 @@ export async function handleLookup(request: Request) {
     omdb.throttle(request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local');
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
+    const netflixOnly = url.searchParams.get('netflix') === '1' && !id;
+    if (netflixOnly) tmdb.assertConfigured();
+    const page = Number(url.searchParams.get('page') ?? '1');
     const data = id
       ? await omdb.rating(id)
-      : await omdb.search(url.searchParams.get('q') ?? '', Number(url.searchParams.get('page') ?? '1'));
-    return Response.json({ ok: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+      : await omdb.search(url.searchParams.get('q') ?? '', page);
+    const filtered = netflixOnly
+      ? await filterNetflixPage(data as SearchData, page, tmdb.availability)
+      : data;
+    return Response.json({ ok: true, data: filtered }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const known = error instanceof LookupError;
     return Response.json({ ok: false, code: known ? error.code : 'unexpected', message: known ? error.message : 'Something went wrong. Please try again.' }, { headers: { 'Cache-Control': 'no-store' } });

@@ -18,4 +18,12 @@ Import this directory as the project's root. Use the `npm run build` build comma
 
 The Vercel Hobby plan is intended for personal, non-commercial projects and has usage limits. Cache, coalescing, daily request caps, and throttling in this MVP are per server instance, not global across Vercel instances. For heavier public traffic, add shared quota tracking/caching and platform-level rate limiting before launch. No database or authentication is used.
 
-Netflix availability is deliberately not checked. This app searches all TV series, and is not affiliated with Netflix or IMDb. Missing scores are shown as “Not rated”, never as zero.
+## Netflix-only filter
+
+Configure `TMDB_API_KEY` as a server-side environment variable (Production and Preview on Vercel). It accepts a TMDB v3 API key or API Read Access Token. Never use a `VITE_` prefix. All-show searches continue to work without this key.
+
+“Netflix only” matches each IMDb ID to a TMDB TV series, then checks subscription providers across every country listed by TMDB/JustWatch. Netflix and its ad-supported variants count; rental/purchase listings do not. Only confirmed matches are included. Availability is cached for one hour, can change, and is not a guarantee that the title is available in your country. Unmatched titles and failed checks are excluded with an explanation, not silently classified as non-Netflix.
+
+Search results are checked one candidate page at a time. “More matches” remains available even when a page has no confirmed Netflix matches; the displayed Netflix count is the number found so far, not an invented global count. Data credits include the required TMDB logo, disclaimer, and JustWatch attribution.
+
+This app is not affiliated with Netflix or IMDb. Missing scores are shown as “Not rated”, never as zero.

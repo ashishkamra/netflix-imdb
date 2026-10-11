@@ -17,8 +17,8 @@ const fixture = `(() => {
     if (query === 'Dark') {
       if (window.__slowDark) await new Promise(resolve => setTimeout(resolve, 1400));
       data = url.searchParams.get('page') === '2'
-        ? { shows: [{ id: 'tt1234567', title: 'Dark — unrated test title', year: '2026' }], total: 3 }
-        : { shows: [{ id: 'tt5753856', title: 'Dark', year: '2017–2020' }, { id: 'tt19231492', title: 'Dark Matter', year: '2024–' }], total: 3 };
+        ? { shows: [{ id: 'tt1234567', title: 'Dark — unrated test title', year: '2026' }], total: 3, nextPage: null }
+        : { shows: [{ id: 'tt5753856', title: 'Dark', year: '2017–2020' }, { id: 'tt19231492', title: 'Dark Matter', year: '2024–' }], total: 3, nextPage: 2 };
     } else if (query === 'Crown') data = { shows: [{ id: 'tt4786824', title: 'The Crown', year: '2016–2023' }], total: 1 };
     else if (query === 'Nothing') data = { shows: [], total: 0 };
     else if (query === 'Failure') return Response.json({ ok: false, code: 'quota', message: 'Daily lookup limit reached. Please try again tomorrow.' });
@@ -27,15 +27,23 @@ const fixture = `(() => {
       const id = url.searchParams.get('id');
       data = { score: id === 'tt1234567' ? null : id === 'tt19231492' ? '7.1' : '8.7', votes: '450,000' };
     } else data = { shows: [], total: 0 };
+    if (url.searchParams.get('netflix') === '1' && query) {
+      if (query === 'Missing') return Response.json({ ok: false, code: 'tmdb_not_configured', message: 'The site owner needs to check TMDB_API_KEY.' });
+      if (query === 'Later') data = url.searchParams.get('page') === '2'
+        ? { shows: [{ id: 'tt5753856', title: 'Dark', year: '2017–2020', netflixCountries: ['JP'] }], total: 11, nextPage: null }
+        : { shows: [], total: 11, nextPage: 2, unknown: 1 };
+      else data = { ...data, shows: data.shows.filter(show => show.id === 'tt5753856').map(show => ({ ...show, netflixCountries: ['DE', 'JP'], tmdbId: 70523 })), nextPage: null };
+    }
     return Response.json({ ok: true, data });
   };
 })()`;
 
 const commands = [
-  ['open', url], ['wait', '1000'],
+  ['open', url], ['set', 'viewport', '1280', '800'], ['wait', '1000'],
   ['fill', '#show-search', 'Dark'], ['wait', '800'],
   assert("if (!document.querySelector('.results-list') && !document.querySelector('.error-message')) throw Error('Live response or configuration state missing')"),
   ['click', "button[aria-label='Clear search']"],
+  ['wait', '200'],
   assert("if (document.querySelector('#show-search').value !== '') throw Error('Clear failed')"),
   ['click', '.suggestions button:first-of-type'], ['wait', '700'],
   assert("if (document.querySelector('#show-search').value !== 'Stranger Things') throw Error('Example failed')"),
@@ -66,6 +74,22 @@ const commands = [
   ['eval', 'window.__slowDark = false; window.__failRating = true'],
   ['fill', '#show-search', 'Dark'], ['wait', '700'],
   assert("if (!document.body.innerText.includes('Some scores couldn’t load')) throw Error('Partial failure state missing')"),
+  ['eval', 'window.__failRating = false'],
+  ['click', '.netflix-toggle'], ['wait', '800'],
+  assert("if (document.querySelectorAll('.results-list li').length !== 1 || !document.body.innerText.includes('Netflix in 2 countries')) throw Error('Netflix filter failed')"),
+  ['screenshot', `${screenshots}/netflix-mobile.png`],
+  ['set', 'viewport', '1280', '800'],
+  ['screenshot', `${screenshots}/netflix-desktop.png`],
+  ['fill', '#show-search', 'Later'], ['wait', '700'],
+  assert("if (!document.body.innerText.includes('No confirmed Netflix matches yet') || !document.querySelector('.more-button') || !document.body.innerText.includes('Unverified titles are excluded')) throw Error('Empty filtered page hid pagination or unknown status')"),
+  ['click', '.more-button'], ['wait', '700'],
+  assert("if (!document.querySelector('.results-list')?.innerText.includes('Dark')) throw Error('Later Netflix matches missing')"),
+  ['fill', '#show-search', 'Missing'], ['wait', '700'],
+  assert("if (!document.body.innerText.includes('TMDB_API_KEY')) throw Error('Netflix configuration error hidden')"),
+  ['click', '.netflix-toggle'], ['fill', '#show-search', 'Dark'], ['wait', '700'],
+  assert("if (document.querySelectorAll('.results-list li').length !== 2) throw Error('Turning off Netflix filter failed')"),
+  ['focus', '.data-credits summary'], ['press', 'Enter'], ['wait', '200'],
+  assert("if (!document.querySelector('.data-credits').open || !document.querySelector('.credits-content img').naturalWidth) throw Error('Data credits or logo missing')"),
   ['errors'], ['close'],
 ];
 

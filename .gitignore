@@ -1,0 +1,9 @@
+node_modules/
+.tanstack/
+.vercel/
+dist/
+.output/
+.grok/*.log
+.grok/*.pid
+screenshots/
+.env*
